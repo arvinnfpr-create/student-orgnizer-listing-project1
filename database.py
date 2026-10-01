@@ -1,17 +1,27 @@
-import sqlite3
+import os
+import psycopg2
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
-DATABASE_FILE = "students.db"
+def get_connection():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL not found in .env")
+
+    return psycopg2.connect(DATABASE_URL)
 
 
 def init_database():
-    connection = sqlite3.connect(DATABASE_FILE)
-
+    connection = get_connection()
     cursor = connection.cursor()
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS students (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGSERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             field TEXT NOT NULL,
             grade TEXT NOT NULL,
@@ -21,12 +31,12 @@ def init_database():
     """)
 
     connection.commit()
+    cursor.close()
     connection.close()
 
 
 def add_student(student: dict):
-    connection = sqlite3.connect(DATABASE_FILE)
-
+    connection = get_connection()
     cursor = connection.cursor()
 
     cursor.execute("""
@@ -37,7 +47,7 @@ def add_student(student: dict):
             student_phone,
             parent_phone
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s)
     """, (
         student["name"],
         student["field"],
@@ -47,12 +57,12 @@ def add_student(student: dict):
     ))
 
     connection.commit()
+    cursor.close()
     connection.close()
 
 
 def get_students():
-    connection = sqlite3.connect(DATABASE_FILE)
-
+    connection = get_connection()
     cursor = connection.cursor()
 
     cursor.execute("""
@@ -68,6 +78,7 @@ def get_students():
 
     rows = cursor.fetchall()
 
+    cursor.close()
     connection.close()
 
     students = []
@@ -85,25 +96,25 @@ def get_students():
 
 
 def get_student_count():
-    connection = sqlite3.connect(DATABASE_FILE)
-
+    connection = get_connection()
     cursor = connection.cursor()
 
     cursor.execute("SELECT COUNT(*) FROM students")
 
     count = cursor.fetchone()[0]
 
+    cursor.close()
     connection.close()
 
     return count
 
 
 def clear_students():
-    connection = sqlite3.connect(DATABASE_FILE)
-
+    connection = get_connection()
     cursor = connection.cursor()
 
     cursor.execute("DELETE FROM students")
 
     connection.commit()
+    cursor.close()
     connection.close()
