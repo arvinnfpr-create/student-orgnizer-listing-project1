@@ -1,4 +1,4 @@
-python-telegram-bot
+python-telegram-bot[webhooks]
 python-dotenv
 openpyxl
 psycopg2-binary

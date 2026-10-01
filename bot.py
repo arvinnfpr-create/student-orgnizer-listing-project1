@@ -1,6 +1,4 @@
 import os
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from dotenv import load_dotenv
 from openpyxl import Workbook
@@ -24,37 +22,11 @@ from database import (
     clear_students,
 )
 
-
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-
-# =========================
-# Render Health Server
-# =========================
-
-class HealthHandler(BaseHTTPRequestHandler):
-
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running")
-
-    def log_message(self, format, *args):
-        return
-
-
-def run_health_server():
-
-    port = int(os.environ.get("PORT", 10000))
-
-    server = HTTPServer(
-        ("0.0.0.0", port),
-        HealthHandler
-    )
-
-    server.serve_forever()
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
+PORT = int(os.getenv("PORT", "10000"))
 
 
 # =========================
@@ -65,7 +37,6 @@ async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     count = get_student_count()
 
     await update.message.reply_text(
@@ -83,7 +54,6 @@ async def receive_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     if not update.message:
         return
 
@@ -92,12 +62,9 @@ async def receive_message(
     if not text:
         return
 
-    # Parse student information
     student = parse_student_text(text)
 
-    # Check required fields
     if not is_valid_student(student):
-
         await update.message.reply_text(
             "❌ این پیام اطلاعات کامل دانش‌آموز را ندارد.\n\n"
             "اطمینان حاصل کنید پیام شامل این موارد باشد:\n"
@@ -107,10 +74,8 @@ async def receive_message(
             "📱 شماره دانش‌آموز\n"
             "👨‍👩‍👦 شماره والدین"
         )
-
         return
 
-    # Save immediately to database
     add_student(student)
 
     count = get_student_count()
@@ -126,28 +91,27 @@ async def receive_message(
     )
 
 
+# =========================
+# Export Excel
+# =========================
+
 async def export_excel(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     students = get_students()
 
     if not students:
-
         await update.message.reply_text(
             "❌ هنوز هیچ اطلاعاتی دریافت نشده است."
         )
-
         return
 
-    # Create Excel workbook
     workbook = Workbook()
 
     sheet = workbook.active
     sheet.title = "Students"
 
-    # Headers
     sheet.append([
         "نام و نام خانوادگی",
         "پایه و رشته",
@@ -155,9 +119,7 @@ async def export_excel(
         "شماره والدین",
     ])
 
-    # Add students
     for student in students:
-
         grade_and_field = (
             f"{student['grade']} - {student['field']}"
         )
@@ -169,20 +131,16 @@ async def export_excel(
             student["parent_phone"],
         ])
 
-    # Column widths
     sheet.column_dimensions["A"].width = 30
     sheet.column_dimensions["B"].width = 25
     sheet.column_dimensions["C"].width = 20
     sheet.column_dimensions["D"].width = 20
 
-    # Save Excel
     file_path = "students.xlsx"
 
     workbook.save(file_path)
 
-    # Send Excel
     with open(file_path, "rb") as file:
-
         await update.message.reply_document(
             document=file,
             filename="students.xlsx",
@@ -193,19 +151,20 @@ async def export_excel(
         )
 
 
+# =========================
+# Clear Database
+# =========================
+
 async def clear_database(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     count = get_student_count()
 
     if count == 0:
-
         await update.message.reply_text(
             "ℹ️ دیتابیس خالی است."
         )
-
         return
 
     clear_students()
@@ -222,18 +181,14 @@ async def clear_database(
 
 def main():
 
-    # Start Render health server
-    health_thread = threading.Thread(
-        target=run_health_server,
-        daemon=True
-    )
-
-    health_thread.start()
-
     if not BOT_TOKEN:
-
         raise RuntimeError(
-            "BOT_TOKEN پیدا نشد. فایل .env را بررسی کنید."
+            "BOT_TOKEN پیدا نشد."
+        )
+
+    if not RENDER_EXTERNAL_URL:
+        raise RuntimeError(
+            "RENDER_EXTERNAL_URL پیدا نشد."
         )
 
     # Initialize database
@@ -247,22 +202,20 @@ def main():
         .build()
     )
 
-    # /start
+    # Commands
     app.add_handler(
         CommandHandler("start", start)
     )
 
-    # /export
     app.add_handler(
         CommandHandler("export", export_excel)
     )
 
-    # /clear
     app.add_handler(
         CommandHandler("clear", clear_database)
     )
 
-    # Normal text messages
+    # Normal messages
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -270,10 +223,20 @@ def main():
         )
     )
 
-    print("Bot is running...")
+    webhook_url = (
+        f"{RENDER_EXTERNAL_URL}/telegram"
+    )
 
-    # Start Telegram polling
-    app.run_polling()
+    print("Starting Telegram webhook...")
+    print(f"Webhook URL: {webhook_url}")
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path="telegram",
+        webhook_url=webhook_url,
+        drop_pending_updates=True,
+    )
 
 
 if __name__ == "__main__":
