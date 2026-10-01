@@ -1,4 +1,6 @@
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from dotenv import load_dotenv
 from openpyxl import Workbook
@@ -28,7 +30,41 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =========================
+# Render Health Server
+# =========================
+
+class HealthHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running")
+
+    def log_message(self, format, *args):
+        return
+
+
+def run_health_server():
+
+    port = int(os.environ.get("PORT", 10000))
+
+    server = HTTPServer(
+        ("0.0.0.0", port),
+        HealthHandler
+    )
+
+    server.serve_forever()
+
+
+# =========================
+# Telegram Commands
+# =========================
+
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     count = get_student_count()
 
@@ -180,7 +216,19 @@ async def clear_database(
     )
 
 
+# =========================
+# Main
+# =========================
+
 def main():
+
+    # Start Render health server
+    health_thread = threading.Thread(
+        target=run_health_server,
+        daemon=True
+    )
+
+    health_thread.start()
 
     if not BOT_TOKEN:
 
@@ -191,6 +239,7 @@ def main():
     # Initialize database
     init_database()
 
+    # Create Telegram application
     app = (
         Application
         .builder()
@@ -223,6 +272,7 @@ def main():
 
     print("Bot is running...")
 
+    # Start Telegram polling
     app.run_polling()
 
 
